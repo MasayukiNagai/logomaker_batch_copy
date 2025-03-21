@@ -1,6 +1,11 @@
 Optimized Logomaker Implementation
 ================================
 
+This project uses code from [seam-nn](https://github.com/evanseitz/seam-nn), specifically the `seam-nn/logomaker_batch` folder.
+All credit goes to the original authors.
+
+## Original README
+
 This is an optimized version of the original Logomaker package (https://github.com/jbkinney/logomaker) by Ammar Tareen and Justin Kinney. The optimization focuses on batch processing capabilities, significantly improving performance for generating multiple sequence logos.
 
 Key Improvements:
