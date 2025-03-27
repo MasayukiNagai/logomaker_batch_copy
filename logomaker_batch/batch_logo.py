@@ -22,25 +22,26 @@ class TimingContext:
     def __init__(self, name, timing_dict):
         self.name = name
         self.timing_dict = timing_dict
-        
+
     def __enter__(self):
         self.start = time.time()
         return self
-        
+
     def __exit__(self, *args):
         self.timing_dict[self.name] = time.time() - self.start
+
 
 class BatchLogo:
     # Initialize class-level caches
     _path_cache = {}
     _m_path_cache = {}
     _transform_cache = {}
-    
+
     def __init__(self, values, alphabet=None, fig_size=[10,2.5], batch_size=50, gpu=False, font_name='sans', y_min_max=None, **kwargs):
         """Initialize BatchLogo processor"""
         if gpu:
             print("Warning: GPU acceleration not yet implemented, falling back to CPU")
-            
+
         # Reset caches for each new instance
         self._path_cache = {}
         self._m_path_cache = {}
@@ -54,31 +55,31 @@ class BatchLogo:
         self.values = np.array(values)
         self.alphabet = alphabet if alphabet is not None else ['A', 'C', 'G', 'T']
         self.batch_size = batch_size
-        
+
         self.N = self.values.shape[0]  # number of logos
         self.L = self.values.shape[1]  # length of each logo
-        
+
         self.kwargs = self._get_default_kwargs()
         self.kwargs.update(kwargs)
-        
+
         # Initialize storage for processed logos
         self.processed_logos = {}
-        
+
         # Set figure size
         self.figsize = fig_size
-        
+
         # Get font name
         self.font_name = font_name
-        
+
         # Get stack order
         self.stack_order = self.kwargs.pop('stack_order', 'big_on_top')
-        
+
         # Get color scheme
         color_scheme = self.kwargs.pop('color_scheme', 'classic')
-        
+
         # Initialize rgb_dict
         self.rgb_dict = {}
-        
+
         # Handle color scheme
         if isinstance(color_scheme, dict):
             # If dictionary provided, use it directly
@@ -115,14 +116,14 @@ class BatchLogo:
                     pbar.update(end_idx - start_idx)
         #print("Processing times:", timing)
         return self
-    
+
     def _process_batch(self, start_idx, end_idx):
         """Process a batch of logos and store their data"""
         batch_timing = {}
         with TimingContext('batch_total', batch_timing):
             # Create font properties once
             font_prop = fm.FontProperties(family=self.font_name)
-            
+
             # Pre-compute paths and their extents
             if not self._path_cache:
                 # Cache M path first
@@ -133,7 +134,7 @@ class BatchLogo:
                     'extents': m_extents,
                     'width': m_extents.width,
                 }
-                
+
                 # Then cache alphabet paths
                 for char in self.alphabet:
                     base_path = TextPath((0, 0), char, size=1, prop=font_prop)
@@ -142,33 +143,33 @@ class BatchLogo:
                         'normal': {'path': base_path, 'extents': base_path.get_extents()},
                         'flipped': {'path': flipped_path, 'extents': flipped_path.get_extents()}
                     }
-            
+
             for idx in range(start_idx, end_idx):
                 with TimingContext(f'logo_{idx}', batch_timing):
                     glyph_data = []
-                    
+
                     for pos in range(self.L):
                         values = self.values[idx, pos]
                         ordered_indices = self._get_ordered_indices(values)
                         values = values[ordered_indices]
                         chars = [str(self.alphabet[i]) for i in ordered_indices]
-                        
+
                         # Calculate total negative height first
                         neg_values = values[values < 0]
                         total_neg_height = abs(sum(neg_values)) + (len(neg_values) - 1) * self.kwargs['vsep']
-                        
+
                         # Handle positive values (stack up from 0)
                         floor = self.kwargs['vsep']/2.0
                         for value, char in zip(values, chars):
                             if value > 0:
                                 ceiling = floor + value
-                                
+
                                 path_data = self._path_cache[char]['normal']
                                 transformed_path = self._get_transformed_path(
                                     path_data, pos, floor, ceiling,
                                     self._m_path_cache['extents'].width
                                 )
-                                
+
                                 glyph_data.append({
                                     'path': transformed_path,
                                     'color': self.rgb_dict[char],
@@ -179,20 +180,20 @@ class BatchLogo:
                                     'ceiling': ceiling
                                 })
                                 floor = ceiling + self.kwargs['vsep']
-                        
+
                         # Handle negative values (stack down from -total_height)
                         if len(neg_values) > 0:
                             floor = -total_neg_height - self.kwargs['vsep']/2.0
                             for value, char in zip(values, chars):
                                 if value < 0:
                                     ceiling = floor + abs(value)
-                                    
+
                                     path_data = self._path_cache[char]['flipped' if self.kwargs['flip_below'] else 'normal']
                                     transformed_path = self._get_transformed_path(
                                         path_data, pos, floor, ceiling,
                                         self._m_path_cache['extents'].width
                                     )
-                                    
+
                                     glyph_data.append({
                                         'path': transformed_path,
                                         'color': self.rgb_dict[char],
@@ -203,15 +204,15 @@ class BatchLogo:
                                         'ceiling': ceiling
                                     })
                                     floor = ceiling + self.kwargs['vsep']
-                    
+
                     self.processed_logos[idx] = {'glyphs': glyph_data}
-            
+
             #print(f"Batch {start_idx}-{end_idx} timing:", batch_timing)
-    
+
     def draw_logos(self, indices=None, rows=None, cols=None):
         """
         Draw specific logos in a grid layout
-        
+
         Parameters
         ----------
         indices : list or None
@@ -221,9 +222,9 @@ class BatchLogo:
         """
         if indices is None:
             indices = list(range(self.N))
-        
+
         N = len(indices)
-        
+
         # Determine grid layout
         if rows is None and cols is None:
             cols = min(5, N)
@@ -232,38 +233,38 @@ class BatchLogo:
             rows = (N + cols - 1) // cols
         elif cols is None:
             cols = (N + rows - 1) // rows
-            
+
         # Create figure with subplots
-        fig, axes = plt.subplots(rows, cols, 
+        fig, axes = plt.subplots(rows, cols,
                                 figsize=(self.figsize[0]*cols, self.figsize[1]*rows),
                                 squeeze=False)
-        
+
         # Draw requested logos
         for i, idx in enumerate(indices):
             if idx not in self.processed_logos:
                 raise ValueError(f"Logo {idx} has not been processed yet. Run process_all() first.")
-                
+
             row = i // cols
             col = i % cols
             ax = axes[row, col]
-            
+
             logo_data = self.processed_logos[idx]
             self._draw_single_logo(ax, logo_data)
-            
+
         # Turn off empty subplots
         for i in range(N, rows * cols):
             row = i // cols
             col = i % cols
             axes[row, col].axis('off')
-            
+
         plt.tight_layout()
         return fig, axes
-    
-    def draw_single(self, idx, fixed_ylim=True, view_window=None, fig_size=None, 
+
+    def draw_single(self, idx, fixed_ylim=True, view_window=None, fig_size=None,
                     highlight_ranges=None, highlight_colors=None, highlight_alpha=0.5,
                     border=True):
         """Draw a single logo
-        
+
         Parameters
         ----------
         idx : int
@@ -288,23 +289,29 @@ class BatchLogo:
         """
         if idx not in self.processed_logos:
             raise ValueError(f"Logo {idx} has not been processed yet. Run process_all() first.")
-        
+
         fig, ax = plt.subplots(figsize=fig_size if fig_size is not None else self.figsize)
         self._draw_single_logo(ax, self.processed_logos[idx], fixed_ylim=fixed_ylim, border=border)
-        
+
         # Add highlighting if specified
         if highlight_ranges is not None:
             # Convert single tuple/list to list of ranges
             if isinstance(highlight_ranges[0], (int, float)):
                 highlight_ranges = [highlight_ranges]
-            
+
             # Set default colors if None
             if highlight_colors is None:
                 n_ranges = len(highlight_ranges)
                 highlight_colors = [plt.cm.Pastel1(i % 9) for i in range(n_ranges)]
             elif isinstance(highlight_colors, str):
                 highlight_colors = [highlight_colors]
-            
+
+            # Ensure highlight_colors length matches highlight_ranges length
+            if len(highlight_colors) < len(highlight_ranges):
+                # Extend the provided color list by repeating its elements as needed
+                multiplier = len(highlight_ranges) // len(highlight_colors) + 1
+                highlight_colors = (highlight_colors * multiplier)[:len(highlight_ranges)]
+
             # Add highlighting rectangles (using full sequence coordinates)
             for positions, color in zip(highlight_ranges, highlight_colors):
                 # Handle both (start,stop) tuples and [pos1, pos2, ...] lists
@@ -327,18 +334,18 @@ class BatchLogo:
                                 ax.axvspan(start-0.5, end+0.5, color=color, alpha=highlight_alpha, zorder=-1)
                             start = curr
                         prev = curr
-        
+
         # Apply view window last
         if view_window is not None:
             start, end = view_window
             ax.set_xlim(start-0.5, end-0.5)
-        
+
         plt.tight_layout()
         return fig, ax
-    
+
     def _draw_single_logo(self, ax, logo_data, fixed_ylim=True, border=True):
         """Draw a single logo on the given axes.
-        
+
         Parameters
         ----------
         ax : matplotlib.axes.Axes
@@ -351,7 +358,7 @@ class BatchLogo:
             Whether to show the axis spines (border)
         """
         timing = {}
-        
+
         with TimingContext('patch_creation', timing):
             patches = []
             for glyph_data in logo_data['glyphs']:
@@ -361,14 +368,14 @@ class BatchLogo:
                                 linewidth=glyph_data['edgewidth'],
                                 alpha=glyph_data['alpha'])
                 patches.append(patch)
-        
+
         with TimingContext('patch_collection', timing):
             ax.add_collection(PatchCollection(patches, match_original=True))
-        
+
         with TimingContext('axis_setup', timing):
             # Set proper axis limits
             ax.set_xlim(-0.5, self.L - 0.5)
-            
+
             if fixed_ylim and self.y_min_max is not None:
                 ax.set_ylim(self.y_min_max[0], self.y_min_max[1])
             else:
@@ -377,21 +384,21 @@ class BatchLogo:
                 ceilings = [g['ceiling'] for g in logo_data['glyphs']]
                 ymin = min(floors) if floors else 0
                 ymax = max(ceilings) if ceilings else 1
-                
+
                 # Ensure baseline is visible
                 ymin = min(ymin, 0)
                 ax.set_ylim(ymin, ymax)
-            
+
             # Draw baseline
             if self.kwargs['baseline_width'] > 0:
                 ax.axhline(y=0, color='black',
                           linewidth=self.kwargs['baseline_width'],
                           zorder=-1)
-            
+
             # Show/hide spines based on border parameter
             for spine in ax.spines.values():
                 spine.set_visible(border)
-        
+
         #print("Logo drawing details:", timing)
 
     def _get_default_kwargs(self):
@@ -425,7 +432,7 @@ class BatchLogo:
         neg_values = values[values < 0]
         if len(neg_values) == 0:
             return self.kwargs['vsep']/2.0
-        
+
         # Calculate total height needed for negative values
         total_neg_height = abs(sum(neg_values)) + (len(neg_values) - 1) * self.kwargs['vsep']
         return -total_neg_height + self.kwargs['vsep']/2.0
@@ -435,20 +442,20 @@ class BatchLogo:
         # Get original path and its extents
         base_path = path_data['path']
         base_extents = path_data['extents']
-        
+
         # Calculate horizontal stretch factors
         bbox_width = self.kwargs['width'] - 2 * self.kwargs['vpad']
         hstretch_char = bbox_width / base_extents.width
         hstretch_m = bbox_width / m_width
         hstretch = min(hstretch_char, hstretch_m)
-        
+
         # Calculate character width and shift
         char_width = hstretch * base_extents.width
         char_shift = (bbox_width - char_width) / 2.0
-        
+
         # Calculate vertical stretch
         vstretch = (ceiling - floor) / base_extents.height
-        
+
         # Create and apply transformation
         transform = Affine2D()
         transform.translate(tx=-base_extents.xmin, ty=-base_extents.ymin)  # Center first
@@ -457,7 +464,7 @@ class BatchLogo:
             tx=pos - bbox_width/2.0 + self.kwargs['vpad'] + char_shift,
             ty=floor
         )
-        
+
         final_path = transform.transform_path(base_path)
         return final_path
 
@@ -468,7 +475,7 @@ class BatchLogo:
 
     def draw_variability_logo(self, view_window=None, fig_size=None):
         """Draw a variability logo showing all glyphs from all clusters overlaid at each position.
-        
+
         Parameters
         ----------
         view_window : list or tuple, optional
@@ -478,7 +485,7 @@ class BatchLogo:
         """
         # Process all glyphs into logo_data
         logo_data = {'glyphs': []}
-        
+
         # For each position
         for pos in range(self.L):
             # For each cluster
@@ -487,23 +494,23 @@ class BatchLogo:
                 ordered_indices = self._get_ordered_indices(values)
                 values = values[ordered_indices]
                 chars = [str(self.alphabet[i]) for i in ordered_indices]
-                
+
                 # Calculate total negative height first
                 neg_values = values[values < 0]
                 total_neg_height = abs(sum(neg_values)) + (len(neg_values) - 1) * self.kwargs['vsep']
-                
+
                 # Handle positive values (stack up from 0)
                 floor = self.kwargs['vsep']/2.0
                 for value, char in zip(values, chars):
                     if value > 0:
                         ceiling = floor + value
-                        
+
                         path_data = self._path_cache[char]['normal']
                         transformed_path = self._get_transformed_path(
                             path_data, pos, floor, ceiling,
                             self._m_path_cache['extents'].width
                         )
-                        
+
                         logo_data['glyphs'].append({
                             'path': transformed_path,
                             'color': self.rgb_dict[char],
@@ -514,20 +521,20 @@ class BatchLogo:
                             'ceiling': ceiling
                         })
                         floor = ceiling + self.kwargs['vsep']
-                
+
                 # Handle negative values (stack down from -total_height)
                 if len(neg_values) > 0:
                     floor = -total_neg_height - self.kwargs['vsep']/2.0
                     for value, char in zip(values, chars):
                         if value < 0:
                             ceiling = floor + abs(value)
-                            
+
                             path_data = self._path_cache[char]['flipped' if self.kwargs['flip_below'] else 'normal']
                             transformed_path = self._get_transformed_path(
                                 path_data, pos, floor, ceiling,
                                 self._m_path_cache['extents'].width
                             )
-                            
+
                             logo_data['glyphs'].append({
                                 'path': transformed_path,
                                 'color': self.rgb_dict[char],
@@ -538,21 +545,22 @@ class BatchLogo:
                                 'ceiling': ceiling
                             })
                             floor = ceiling + self.kwargs['vsep']
-        
+
         fig, ax = plt.subplots(figsize=fig_size if fig_size is not None else self.figsize)
         self._draw_single_logo(ax, logo_data, fixed_ylim=True)
-        
+
         if view_window is not None:
             start, end = view_window
             ax.set_xlim(start-0.5, end-0.5)
-        
+
         plt.tight_layout()
         return fig, ax
+
 
 """
 ARCHITECTURAL DIFFERENCES BETWEEN BATCH_LOGO AND GLYPH_ORIG IMPLEMENTATIONS
 
-This implementation (batch_logo.py) achieves significant performance improvements 
+This implementation (batch_logo.py) achieves significant performance improvements
 over the original Glyph_orig.py approach through several key optimizations:
 
 1. Path Pre-computation and Caching (see batch_logo.py lines 110-126)
@@ -571,7 +579,7 @@ over the original Glyph_orig.py approach through several key optimizations:
 
 3. Drawing Strategy (see Glyph_orig.py lines 313-319 vs batch_logo.py lines 271-314)
    - Glyph_orig.py: Adds patches individually to axes
-   - batch_logo.py: 
+   - batch_logo.py:
      * Collects all paths for a logo
      * Creates single PatchCollection
      * Uses one draw call per logo
