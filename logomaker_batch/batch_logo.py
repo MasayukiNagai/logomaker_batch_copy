@@ -209,7 +209,8 @@ class BatchLogo:
 
             #print(f"Batch {start_idx}-{end_idx} timing:", batch_timing)
 
-    def draw_logos(self, indices=None, rows=None, cols=None):
+    def draw_logos(self, indices=None, rows=None, cols=None,
+                   highlight_ranges=None, highlight_colors=None, highlight_alpha=0.5):
         """
         Draw specific logos in a grid layout
 
@@ -250,6 +251,44 @@ class BatchLogo:
 
             logo_data = self.processed_logos[idx]
             self._draw_single_logo(ax, logo_data)
+
+            # Add highlighting if specified
+            if highlight_ranges is not None:
+                # Convert single tuple/list to list of ranges
+                if isinstance(highlight_ranges[0], (int, float)):
+                    highlight_ranges = [highlight_ranges]
+
+                # Set default colors if None
+                if highlight_colors is None:
+                    n_ranges = len(highlight_ranges)
+                    highlight_colors = [plt.cm.Pastel1(i % 9) for i in range(n_ranges)]
+                elif isinstance(highlight_colors, str):
+                    highlight_colors = [highlight_colors]
+
+                # Ensure highlight_colors length matches highlight_ranges length
+                if len(highlight_colors) < len(highlight_ranges):
+                    multiplier = len(highlight_ranges) // len(highlight_colors) + 1
+                    highlight_colors = (highlight_colors * multiplier)[:len(highlight_ranges)]
+
+                # Add highlighting rectangles
+                for positions, color in zip(highlight_ranges, highlight_colors):
+                    # Handle both (start, stop) tuples and [pos1, pos2, ...] lists
+                    if len(positions) == 2 and isinstance(positions, tuple):
+                        start, end = positions
+                        ax.axvspan(start-0.5, end-0.5, color=color, alpha=highlight_alpha, zorder=-1)
+                    else:
+                        positions = sorted(positions)
+                        start = positions[0]
+                        prev = start
+                        for curr in positions[1:] + [None]:
+                            if curr != prev + 1:
+                                end = prev
+                                if start == end:
+                                    ax.axvspan(start-0.5, start+0.5, color=color, alpha=highlight_alpha, zorder=-1)
+                                else:
+                                    ax.axvspan(start-0.5, end+0.5, color=color, alpha=highlight_alpha, zorder=-1)
+                                start = curr
+                            prev = curr
 
         # Turn off empty subplots
         for i in range(N, rows * cols):
