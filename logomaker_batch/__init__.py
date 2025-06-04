@@ -1,6 +1,6 @@
 from .Logo import Logo
 from .batch_logo import BatchLogo
-from .gpu_utils import GPUTransformer
+# from .gpu_utils import GPUTransformer
 from .colors import get_rgb, get_color_dict
 from .Glyph import Glyph
 from .error_handling import check, handle_errors
